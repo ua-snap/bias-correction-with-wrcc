@@ -1,0 +1,8 @@
+name: wrcc_bias_correct
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - bs4
+  - pandas
+prefix: /Users/cparr/miniconda3/envs/wrcc_bias_correct
