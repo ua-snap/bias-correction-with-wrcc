@@ -1,5 +1,9 @@
 # Outputs
 *.json
+bias_corrected_future_projections.csv
+uncorrected_future_projections.csv
+degree_day_metrics.csv
+wrcc_station_csvs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
