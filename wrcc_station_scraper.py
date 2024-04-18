@@ -4,6 +4,7 @@ import urllib.request
 import csv
 import re
 import argparse
+import os
 
 from bs4 import BeautifulSoup
 
@@ -43,6 +44,8 @@ def write_wrcc_data_to_csv(site_rows, station_id):
     Returns:
         None
     """
+    if not os.path.exists("wrcc_station_csvs"):
+        os.makedir("wrcc_station_csvs")
     with open("station_lookup.csv", newline="") as csvfile:
         reader = csv.reader(csvfile, delimiter=",")
         for row in reader:
