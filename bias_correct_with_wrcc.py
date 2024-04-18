@@ -141,6 +141,9 @@ if __name__ == "__main__":
             pd.DataFrame(snap_df[f"historical {k}"].to_list(), index=snap_df.index)
         )
         snap_df = snap_df.drop(columns=[f"historical {k}"])
+
+    # for debugging
+    snap_df.to_csv("snap_df.csv")
     # get the future projections from the API
     # don't strictly need a new dataframe here but it makes for easier debug
     future_projections_df = snap_df[

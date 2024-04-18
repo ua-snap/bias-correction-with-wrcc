@@ -11,7 +11,6 @@ for filename in os.listdir(csv_dir):
     if filename.endswith(".csv"):
         try:
             df = pd.read_csv(os.path.join(csv_dir, filename))
-
             # compute the average of the 'tmax' and 'tmin' columns
             temp_ds = df[["tmax", "tmin"]].mean(axis=1)
             # compute the degree day metrics
