@@ -68,37 +68,45 @@ def get_future_degree_days_from_api(metric, lat, lon):
 
 
 def bias_correct_future_projections(climo_df, future_df):
-    # Create a new DataFrame to store the bias corrected future projections
-    # This DataFrame will have the same columns as the future_df
-    # but with the values replaced with the bias corrected values
-    # we need to iterate over each row in the both climo_df and future_df (these will have the same index)
-    # and then we need to iterate through the nested dict in the future_df that contains projecte values for each model, scenario, and year
-    # and then look up the climo value for that model, scenario, and metric in the climo_df
-    # and then calculate the bias corrected value by adding the difference between the climo value and the modeled value to the projected value
-    # and then replace the projected value with the bias corrected value in the future_df
-    # and then return the future_df
+    """Execute the bias correction for all metrics.
 
+    Args:
+        climo_df (pd.DataFrame): DataFrame containing the WRCC climatologies
+        future_df (pd.DataFrame): DataFrame containing the future projections
+    Returns:
+        pd.DataFrame: DataFrame containing the bias corrected future projections
+    """
     bias_corrected_df = copy.deepcopy(future_df)
+    # input data has columns for all metrics
     for metric in metrics:
+        bc_outputs = []
+        # climo_df, future_df have same index - iterating through locations
         for index, row in future_df.iterrows():
+            # look up WRCC climo value for the metric
             wrcc_climo = climo_df.loc[index, f"WRCC {metrics[metric]}"]
-            for model, scenarios in row[f"biased {metric} futures"].items():
-                for scenario, years in scenarios.items():
+            # initialize a new output dict
+            output = {}
+            for model in row[f"biased {metric} futures"].keys():
+                output[model] = {}
+                for scenario in row[f"biased {metric} futures"][model].keys():
+                    output[model][scenario] = {}
+                    # look up climo value for this model, scenario, and metric
                     model_scenario_climo = climo_df.loc[
                         index, f"{model} {scenario} {metrics[metric]}"
                     ]
-                    for year, values in years.items():
-                        corrected_value = wrcc_climo + (
-                            values["dd"] - model_scenario_climo
-                        )
-                        # replace the projected value with the bias corrected value
-                        bias_corrected_df.loc[index, f"biased {metric} futures"][model][
+                    for year in row[f"biased {metric} futures"][model][scenario].keys():
+                        output[model][scenario][year] = {}
+                        # calculate the bias corrected value
+                        original_value = row[f"biased {metric} futures"][model][
                             scenario
-                        ][year] = corrected_value
-    # rename the columns in bias_corrected_df to remove the 'biased' prefix
-    bias_corrected_df.columns = [
-        col.replace("biased ", "bias_corrected") for col in bias_corrected_df.columns
-    ]
+                        ][year]["dd"]
+                        bc_value = wrcc_climo + (original_value - model_scenario_climo)
+                        output[model][scenario][year]["dd"] = bc_value
+            bc_outputs.append(output)
+        bias_corrected_df[f"bias corrected {metric} futures"] = bc_outputs
+    # remove the columns containing the original biased data
+    for metric in metrics:
+        bias_corrected_df = bias_corrected_df.drop(columns=[f"biased {metric} futures"])
     return bias_corrected_df
 
 
@@ -109,7 +117,6 @@ if __name__ == "__main__":
     wrcc_df = wrcc_df[
         wrcc_df["Median Years of Observations"] >= wrcc_yr_threshold
     ].rename(columns={"Unnamed: 0": "WRCC ID"})
-
     # add in the SNAP community info so we can ping the API
     station_lu = pd.read_csv("station_lookup.csv")
     snap_df = pd.merge(station_lu, wrcc_df)
@@ -117,7 +124,6 @@ if __name__ == "__main__":
     snap_df[["SNAP Lat", "SNAP Lon", "SNAP ID"]] = snap_df["SNAP Name"].apply(
         lambda x: fetch_lat_lon_id(communities, x)
     )
-
     # grab historical degree days climo value from the API
     for k in metrics.keys():
         snap_df[f"historical {k}"] = snap_df.apply(
@@ -130,14 +136,13 @@ if __name__ == "__main__":
             pd.DataFrame(snap_df[f"historical {k}"].to_list(), index=snap_df.index)
         )
         snap_df = snap_df.drop(columns=[f"historical {k}"])
-
     # get the future projections from the API
     # don't strictly need a new dataframe here but it makes for easier debug
     future_projections_df = snap_df[
         ["WRCC Name", "SNAP Name", "WRCC ID", "SNAP Lat", "SNAP Lon", "SNAP ID"]
-    ]
+    ].copy()
     for metric in metrics:
-        # will have columns like biased freezing_index futures containing the full nested dict json response from the snap data api
+        # cols like biased freezing_index futures with full nested json from snap api
         future_projections_df[f"biased {metric} futures"] = future_projections_df.apply(
             lambda row: get_future_degree_days_from_api(
                 metric, row["SNAP Lat"], row["SNAP Lon"]
@@ -145,10 +150,10 @@ if __name__ == "__main__":
             axis=1,
         )
 
-    # bias correct the future projections
+    # bias correct the future projections, this runs for all metrics
     bias_corrected_df = bias_correct_future_projections(snap_df, future_projections_df)
-    # for each metric, write the bias corrected nested dict to a JSON file
     for metric in metrics:
+        # write the bias corrected nested dict to a JSON file
         bias_corrected_df[
             [
                 f"WRCC Name",
@@ -158,6 +163,7 @@ if __name__ == "__main__":
                 f"bias corrected {metric} futures",
             ]
         ].to_json(f"bias_corrected_{metric}_future_projections.json", orient="records")
+
         future_projections_df[
             [
                 f"WRCC Name",
