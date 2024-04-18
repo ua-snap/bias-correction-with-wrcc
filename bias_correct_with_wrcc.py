@@ -101,7 +101,7 @@ def bias_correct_future_projections(climo_df, future_df):
                             scenario
                         ][year]["dd"]
                         bc_value = wrcc_climo + (original_value - model_scenario_climo)
-                        output[model][scenario][year]["dd"] = bc_value
+                        output[model][scenario][year]["dd"] = int(bc_value)
             bc_outputs.append(output)
         bias_corrected_df[f"bias corrected {metric} futures"] = bc_outputs
     # remove the columns containing the original biased data
