@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import requests
 import copy
 
@@ -13,6 +12,13 @@ wrcc_yr_threshold = 20
 
 
 def get_latlons_from_snap_api():
+    """Get the SNAP community info from the API.
+
+    Args:
+        None
+    Returns:
+        dict: JSON response of SNAP-Communities(TM) from the API
+    """
     response = requests.get("https://earthmaps.io/places/communities")
     if response.status_code == 200:
         return response.json()
@@ -22,6 +28,7 @@ def get_latlons_from_snap_api():
 
 
 def fetch_lat_lon_id(community_lookup, community_name):
+    """Fetch the latitude, longitude, and ID for a given community if the name is in the lookup table that xrefs WRCC stations."""
     for item in community_lookup:
         if item["name"] == community_name:
             return pd.Series((item["latitude"], item["longitude"], item["id"]))
@@ -68,13 +75,14 @@ def get_future_degree_days_from_api(metric, lat, lon):
 
 
 def bias_correct_future_projections(climo_df, future_df):
-    """Execute the bias correction for all metrics.
+    """Execute the delta bias correction for all metrics.
 
+    CP Note: Most explicit implementation I could come up with, lots of deep nesting within the DataFrames and within the JSONs so beware. I sort of hate this function.
     Args:
-        climo_df (pd.DataFrame): DataFrame containing the WRCC climatologies
-        future_df (pd.DataFrame): DataFrame containing the future projections
+        climo_df (pd.DataFrame): containing the WRCC climatologies
+        future_df (pd.DataFrame): containing the future projections
     Returns:
-        pd.DataFrame: DataFrame containing the bias corrected future projections
+        pd.DataFrame: containing the bias corrected future projections
     """
     bias_corrected_df = copy.deepcopy(future_df)
     # input data has columns for all metrics
@@ -100,7 +108,10 @@ def bias_correct_future_projections(climo_df, future_df):
                         original_value = row[f"biased {metric} futures"][model][
                             scenario
                         ][year]["dd"]
+                        # here be the important maths
                         bc_value = wrcc_climo + (original_value - model_scenario_climo)
+                        if bc_value < 0:
+                            bc_value = 0
                         output[model][scenario][year]["dd"] = int(bc_value)
             bc_outputs.append(output)
         bias_corrected_df[f"bias corrected {metric} futures"] = bc_outputs
@@ -142,7 +153,7 @@ if __name__ == "__main__":
         ["WRCC Name", "SNAP Name", "WRCC ID", "SNAP Lat", "SNAP Lon", "SNAP ID"]
     ].copy()
     for metric in metrics:
-        # cols like biased freezing_index futures with full nested json from snap api
+        # ping SNAP API for futures with full nested json pingpingping
         future_projections_df[f"biased {metric} futures"] = future_projections_df.apply(
             lambda row: get_future_degree_days_from_api(
                 metric, row["SNAP Lat"], row["SNAP Lon"]
@@ -150,15 +161,12 @@ if __name__ == "__main__":
             axis=1,
         )
 
-    # bias correct the future projections, this runs for all metrics
+    # bias correct the future projections, this func runs all metrics
     bias_corrected_df = bias_correct_future_projections(snap_df, future_projections_df)
     for metric in metrics:
-        # write the bias corrected nested dict to a JSON file
+        # write both uncorrected and bias corrected nested dicts to JSON
         bias_corrected_df[
             [
-                f"WRCC Name",
-                f"SNAP Name",
-                f"WRCC ID",
                 f"SNAP ID",
                 f"bias corrected {metric} futures",
             ]
@@ -166,13 +174,10 @@ if __name__ == "__main__":
 
         future_projections_df[
             [
-                f"WRCC Name",
-                f"SNAP Name",
-                f"WRCC ID",
                 f"SNAP ID",
                 f"biased {metric} futures",
             ]
         ].to_json(f"uncorrected_{metric}_future_projections.json", orient="records")
-
+    # saving these not required, but useful for debugging
     bias_corrected_df.to_csv("bias_corrected_future_projections.csv")
     future_projections_df.to_csv("uncorrected_future_projections.csv")
